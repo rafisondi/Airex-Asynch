@@ -1,0 +1,50 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+        exclude: ^.*drawio\.svg
+        args:
+          - "--maxkb=5120"
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-xml
+      - id: check-yaml
+        exclude: ^templates/|mkdocs\.yml
+  - repo: https://gitlab.com/bmares/check-json5
+    rev: v1.0.0
+    hooks:
+      - id: check-json5
+  - repo: https://github.com/psf/black
+    rev: 23.1.0
+    hooks:
+      - id: black
+        exclude: ^templates/
+  - repo: https://github.com/PyCQA/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+        exclude: ^templates/
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: ["--profile", "black", "--filter-files", "--resolve-all-configs"]
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v2.0.2
+    hooks:
+      - id: autoflake
+        args: ["--in-place", "--remove-all-unused-imports"]
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.0.0-alpha.6
+    hooks:
+      - id: prettier
+        exclude_types: ["markdown", "svg"]
+        additional_dependencies:
+          - prettier@2.6.2
+          - "@prettier/plugin-xml@0.12.0"
