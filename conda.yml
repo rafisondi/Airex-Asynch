@@ -1,0 +1,9 @@
+name: AsynchAirex39
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  - pip:
+      - git+https://github.com/InspireHornets/hatch-monorepo.git

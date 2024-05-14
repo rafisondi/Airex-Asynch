@@ -1,0 +1,53 @@
+[project]
+name = "AsynchAirex"
+version = "0.0.1"
+description = ""
+readme = "README.md"
+requires-python = ">=3.8,<3.11"
+license = "MIT"
+keywords = []
+authors = [
+    { name = "Rafael Sonderegger", email = "rafeal.sonderegger@inspire.ethz.ch" },
+    { name = "Ivo Aschwanden", email = "aschwanden@inspire.ethz.ch" },
+]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+dependencies = [
+	"hat-core",
+    "hat-tmp1000",
+    "hat-lux1000",
+    "hat-pre1000",
+    "hat-hum1000",
+]
+
+
+[tool.hatch.envs.default]
+type = "monorepo"
+dependencies = [
+	"hat-dev",
+    "hat-docs"
+]
+
+[tool.hatch.envs.default.env-vars]
+PIP_INDEX_URL = "https://pypi.org/simple/"
+PIP_EXTRA_INDEX_URL = "http://nexus.iar.ethz.ch/repository/pypi/simple/"
+PIP_TRUSTED_HOST = "nexus.iar.ethz.ch"
+
+[tool.black]
+line-length = 120
+target-version = ["py39"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[build-system]
+requires = ["hatchling<=1.18.0"]
+build-backend = "hatchling.build"
