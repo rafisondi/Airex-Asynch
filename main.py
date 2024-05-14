@@ -44,14 +44,16 @@ class Logger:
                     measurements = []
                     for i in range(NB_MEASUREMENTS_PER_SAMPLE):
                         try:
-                            new_measurement = sensor._sample()  # single sample from currently connected sensor
+                            new_measurement = (
+                                sensor._sample()
+                            )  # single sample from currently connected sensor # noqa: E501
                             measurements.append(new_measurement.value)
                             time.sleep(1 / sensor.config.frequency)
                         except:
                             sensor._disconnect()
                             sensor._connect()
-                    sensor._disconnect()  # Current measurement of single sensor has been finished
-                    measurement = np.mean(np.array(measurements))  # Averaged measurement
+                    sensor._disconnect()  # Current measurement of single sensor has been finished # noqa: E501
+                    measurement = np.mean(np.array(measurements))  # Averaged measurement # noqa: E501
 
                     if type(sensor) in [
                         PhidgetHum1001Sensor,
@@ -59,14 +61,14 @@ class Logger:
                         PhidgetPre1000Sensor,
                         PhidgetTmp1000Sensor,
                     ]:
-                        time.sleep(3)  # No idea why sleep is necessary... need to test this
+                        time.sleep(3)  # No idea why sleep is necessary... need to test this # noqa: E501
 
                 except:
                     print(f"Could not connect to sensor {sensor.sensor_id}")
                     measurement = np.NaN
                 self.latest_sensor_data[
                     sensor
-                ] = measurement  # Save current sensor measurement in corresponding dict entry
+                ] = measurement  # Save current sensor measurement in corresponding dict entry # noqa: E501
 
             self.sensor_data["time"] = datetime.datetime.now().strftime(
                 "%Y-%m-%d_%H-%M-%S"
