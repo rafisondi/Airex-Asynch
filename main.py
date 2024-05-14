@@ -1,18 +1,37 @@
+import asyncio
 import datetime
 import json
-import threading
-import time
 from dataclasses import dataclass
 
 import numpy as np
 from hat_hum1001.phidget import PhidgetHum1001Sensor
-from hat_lux1000.phidget import PhidgetLux1000Sensor
-from hat_pre1000.phidget import PhidgetPre1000Sensor
 from hat_tmp1000 import PhidgetConfig
 from hat_tmp1000.phidget import PhidgetTmp1000Sensor
 
 MAX_CONSECUTIVE_FAILURES = 3
 NB_MEASUREMENTS_PER_SAMPLE = 3
+
+
+async def sample_sensor(sensor):
+    try:
+        sensor._connect()
+        measurements = []
+        for i in range(NB_MEASUREMENTS_PER_SAMPLE):
+            try:
+                new_measurement = sensor._sample()  # single sample from currently connected sensor
+                measurements.append(new_measurement.value)
+                await asyncio.sleep(1 / sensor.config.frequency)
+            except Exception as e:
+                print(f"Error sampling from sensor {sensor.sensor_id}: {e}")
+                sensor._disconnect()
+                sensor._connect()
+        sensor._disconnect()  # Current measurement of single sensor has been finished
+        measurement = np.mean(np.array(measurements))  # Averaged measurement
+
+    except Exception as e:
+        print(f"Could not connect to sensor {sensor.sensor_id}: {e}")
+        measurement = np.NaN
+    return measurement
 
 
 @dataclass
@@ -30,56 +49,25 @@ class Logger:
     def set_sensor_list(self):
         config_dict = get_config_dict()
         self.sensor_list = get_sensor_list(config_dict)
-        print("Sensor list set successfully.")
 
-    def log_sensors_data(self):
+    async def start_logging(self):
+        await self.log_sensors_data()
+
+    async def log_sensors_data(self):
         self.latest_sensor_data = {sensor: float for sensor in self.sensor_list}
         self.latest_sensor_data["time"] = None
         self.already_tried_reconnect = {sensor: 0 for sensor in self.sensor_list}
 
         while True:
-            for sensor in self.sensor_list:
-                try:
-                    sensor._connect()
-                    measurements = []
-                    for i in range(NB_MEASUREMENTS_PER_SAMPLE):
-                        try:
-                            new_measurement = (
-                                sensor._sample()
-                            )  # single sample from currently connected sensor # noqa: E501
-                            measurements.append(new_measurement.value)
-                            time.sleep(1 / sensor.config.frequency)
-                        except:
-                            sensor._disconnect()
-                            sensor._connect()
-                    sensor._disconnect()  # Current measurement of single sensor has been finished # noqa: E501
-                    measurement = np.mean(np.array(measurements))  # Averaged measurement # noqa: E501
+            tasks = [sample_sensor(sensor) for sensor in self.sensor_list]
+            results = await asyncio.gather(*tasks)
 
-                    if type(sensor) in [
-                        PhidgetHum1001Sensor,
-                        PhidgetLux1000Sensor,
-                        PhidgetPre1000Sensor,
-                        PhidgetTmp1000Sensor,
-                    ]:
-                        time.sleep(3)  # No idea why sleep is necessary... need to test this # noqa: E501
+            for sensor, measurement in zip(self.sensor_list, results):
+                self.latest_sensor_data[sensor] = measurement
 
-                except:
-                    print(f"Could not connect to sensor {sensor.sensor_id}")
-                    measurement = np.NaN
-                self.latest_sensor_data[
-                    sensor
-                ] = measurement  # Save current sensor measurement in corresponding dict entry # noqa: E501
-
-            self.sensor_data["time"] = datetime.datetime.now().strftime(
-                "%Y-%m-%d_%H-%M-%S"
-            )  # Timestamp of finished measurement cycle
+            self.sensor_data["time"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             print(self.latest_sensor_data)
-            # self.save_new_sensors_data()
-            time.sleep(self.sensors_sampling_time)
-
-    def start_logging(self):
-        sensors_thread = threading.Thread(target=self.log_sensors_data)
-        sensors_thread.start()
+            await asyncio.sleep(self.sensors_sampling_time)
 
 
 def get_sensor_list(config_dict):
@@ -144,4 +132,4 @@ if __name__ == "__main__":
     Log = Logger(config)
     print("Setting sensor list...")
     Log.set_sensor_list()
-    Log.start_logging()
+    asyncio.run(Log.start_logging())
