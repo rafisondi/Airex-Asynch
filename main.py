@@ -70,8 +70,11 @@ class Logger:
         if sensor not in self.connected_sensors:
             return np.NaN
         try:
-            sample = sensor._sample()  # single sample from currently connected sensor
-            await asyncio.sleep(1 / sensor.config.frequency)
+            measurements = []
+            for i in range(NB_MEASUREMENTS_PER_SAMPLE):
+                measurements.append(sensor._sample().value)
+                await asyncio.sleep(1 / sensor.config.frequency)
+            sample = np.mean(measurements)
         except Exception as e:
             print(f"Error sampling from sensor {sensor.sensor_id}: {e}")
             print("Trying to reconnect from sensor")
