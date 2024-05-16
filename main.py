@@ -1,6 +1,8 @@
 import asyncio
+import csv
 import datetime
 import json
+import shutil
 import time
 from dataclasses import dataclass
 
@@ -18,14 +20,26 @@ class LoggerConfig:
     sensors_sampling_time: float
     sensors_csv_file_period: int
 
+    credentials_file: str
+    local_folder_path: str
+    drive_folder_id: str
+    upload_to_drive_period: float
+
 
 class Logger:
     def __init__(self, config: LoggerConfig):
         self.sensors_sampling_time = config.sensors_sampling_time
         self.sensors_csv_file_period = config.sensors_csv_file_period
+
+        self.credentials_file = config.credentials_file
+        self.local_folder_path = config.local_folder_path
+        self.drive_folder_id = config.drive_folder_id
+        self.upload_to_drive_period = config.upload_to_drive_period
+
         self.sensor_list = []
         self.connected_sensors = []
         self.sensor_data = {}
+
         self.output_sensors_file = None
 
     def set_sensor_list(self):
@@ -91,14 +105,16 @@ class Logger:
 
     async def new_sensors_data_file(self):
         while True:
-            if self.output_sensors_file is not None:
-                print("Searching cvs file to write to")
+            if self.output_sensors_file != None:
+                shutil.copy(self.output_sensors_file, self.local_folder_path)
             try:
-                print("Uploading to Drive PLACEHOLDER")
+                print("Trying to upload data...")
             except:
                 print("Could not upload files to Google Drive, no Internet Connection.")
+
             current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            self.output_sensors_file = f"./sensor_data_{current_datetime}.csv"
+            self.output_sensors_file = f"./csv/sensor_data_{current_datetime}.csv"
+            self.create_sensors_data_csv()
             print(f" Creating new CSV Placeholder  at {current_datetime}")
             await asyncio.sleep(self.sensors_csv_file_period)  # 3600 for one hour
 
@@ -117,8 +133,27 @@ class Logger:
                 self.latest_sensor_data[sensor] = measurement
 
             self.sensor_data["time"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            self.save_new_sensors_data()
             print(self.latest_sensor_data)
             await asyncio.sleep(self.sensors_sampling_time)
+
+    def save_new_sensors_data(self):
+        if self.output_sensors_file is not None:
+            with open(self.output_sensors_file, "a", newline="") as csv_file:
+                csv_writer = csv.writer(csv_file)
+                row_data = [self.sensor_data["time"]] + [self.latest_sensor_data[sensor] for sensor in self.sensor_list]
+                csv_writer.writerow(row_data)
+                print("New measurements saved at " + self.sensor_data["time"])
+
+    def create_sensors_data_csv(self):
+        with open(self.output_sensors_file, "w", newline="") as csv_file:
+            csv_writer = csv.writer(csv_file)
+            # Create a list of column headers based on sensor_id
+            header = ["Timestamp"] + [
+                f"{sensor.config.measurement_type} from {sensor.config.sensor_id}" for sensor in self.sensor_list
+            ]
+            csv_writer.writerow(header)
+            # csv_file.close()
 
 
 def get_sensor_list(config_dict):
@@ -169,7 +204,12 @@ def get_logger_config(config_file_path):
         config = json.load(config_file)
     print("Logger config loaded successfully.")
     logconfig = LoggerConfig(
-        sensors_sampling_time=config["sensors_sampling_time"], sensors_csv_file_period=config["sensors_csv_file_period"]
+        sensors_sampling_time=config["sensors_sampling_time"],
+        sensors_csv_file_period=config["sensors_csv_file_period"],
+        credentials_file=config["credentials_file"],
+        local_folder_path=config["local_folder_path"],
+        drive_folder_id=config["drive_folder_id"],
+        upload_to_drive_period=config["upload_to_drive_period"],
     )
     return logconfig
 
