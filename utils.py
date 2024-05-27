@@ -1,10 +1,11 @@
 
 import json
-import copy
+import numpy as np
 
 from hat_hum1001.phidget import PhidgetHum1001Sensor
 from hat_tmp1000 import PhidgetConfig
 from hat_tmp1000.phidget import PhidgetTmp1000Sensor
+from hat.sensor import Measurement
 from hat_proges import ProgesConfig, ProgesSensorBox, ProgesMeasurement
 
 
@@ -70,13 +71,13 @@ def load_sensor_ids_to_dict(json_file_path) -> dict:
     
     sensor_ids = config.get("sensors", [])
     measurements_dict = {sensor_id: [] for sensor_id in sensor_ids}
-    
     return measurements_dict
+
+
 
 def extract_progres_sensor_measurement( measurement_list: list[ProgesMeasurement] ) -> dict[str, list[tuple[str, float]]]:
 
     measurements_dict: dict[str, list[tuple[str, float]]] = {}
-
     for measurement in measurement_list:
         sensor_id = measurement.sensor_id
         timestamp = measurement.timestamp
@@ -86,3 +87,18 @@ def extract_progres_sensor_measurement( measurement_list: list[ProgesMeasurement
         measurements_dict[sensor_id].append((timestamp, temperature))
 
     return measurements_dict
+
+def average_sensor_measurement(measurements : list[Measurement]) -> float:
+    vals = []
+    for m in measurements:
+        vals.append(m.value)
+    avg = np.mean(np.array(vals))
+    return avg
+
+def average_progres_sensor_measurement(id: str , measurements : list[tuple[str, float]]) -> tuple[str , float]:
+    vals = []
+    for m in measurements:
+        vals.append(m[1])
+    avg = np.mean(np.array(vals))
+    return id, avg
+    

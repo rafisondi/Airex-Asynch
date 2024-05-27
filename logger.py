@@ -5,8 +5,10 @@ import datetime
 import asyncio
 from dataclasses import dataclass
 import numpy as np
-from utils import get_sensor_list , get_config_dict , extract_progres_sensor_measurement
-from hat_proges import ProgesConfig, ProgesSensorBox
+import utils
+
+from hat.sensor import SensorConfig, Measurement
+from hat_proges import ProgesConfig, ProgesMeasurement
 
 
 MAX_CONSECUTIVE_FAILURES = 3
@@ -35,24 +37,27 @@ class Logger:
         self.upload_to_drive_period = config.upload_to_drive_period
 
         self.sensor_list = []
+        self.sensor_id_list = []
         self.connected_sensors = []
         self.sensor_data = {}
 
         self.output_sensors_file = None
 
     def set_sensor_list(self):
-        config_dict = get_config_dict()
-        self.sensor_list = get_sensor_list(config_dict)
+        config_dict =  utils.get_config_dict()
+        self.sensor_list =  utils.get_sensor_list(config_dict)
+        self.sensor_id_list = [sensor.sensor_id for sensor in self.sensor_list]
+        
 
     def establish_sensor_connection(self):
         count = 0
         idx = []
         for sensor in self.sensor_list:
             try:
-                sensor.connect()
+                sensor._connect()
                 print( f" Sensor {sensor} connected" )
                 idx.append(count)
-                
+                     
             except Exception as e:
                 print(f"Could not connect to sensor {sensor.sensor_id}: {e}")
             count += 1
@@ -60,22 +65,33 @@ class Logger:
         print(len(self.connected_sensors), "/", len(self.sensor_list), " sensors successfully connected.")
         if len(self.connected_sensors) < len(self.sensor_list):
             print(" Not found sensors are going to return NaN from here on.")
+            
+        
 
     def disconnect_sensor_connection(self):
         for sensor in self.sensor_list:
             try:
-                sensor._disconnect()
+                sensor.disconnect()
             except:
                 continue
         print("Sensors disconnected ")
 
-    def sample_sensors(self):
+    def single_sample_all_sensors(self):
         for sensor in self.connected_sensors:
             try:
-                #print(sensor.sample(), f" sampled from: {sensor.sensor_id}")
-                sensor.measure_for_count(1)
-                m = sensor.list_measurements()    
-                print(f'{m = }')
+                
+                if (sensor.sensor_id == 'progres_box'):
+                    sensor.measure_for_count(2) # 2 channels in Box used
+                    # TODO Fix the following hack
+                    # Include the progres sensor ID's attached to the box
+                    sensor_measurements_list = sensor.list_measurements()  
+                    progres_id_1 = sensor_measurements_list[0].sensor_id
+                    progres_id_2 = sensor_measurements_list[1].sensor_id
+                    progres_box_idx = self.sensor_id_list.index('progres_box')
+                    self.sensor_id_list[progres_box_idx:progres_box_idx+1] = progres_id_1, progres_id_2
+                else:
+                    print(sensor._sample(), f" sampled from: {sensor.sensor_id}")
+
             except Exception as e:
                 print(f"Error sampling from sensor {sensor.sensor_id}: {e}")
 
@@ -83,33 +99,23 @@ class Logger:
         batch = asyncio.gather(self.new_sensors_data_file(), self.log_sensors_data())
         result_file, result_log_sensors = await batch
 
-    async def sample_sensor(self, sensor):
-        
-        
-        
+    async def sample_sensor(self, sensor:SensorConfig) -> list[Measurement] :
         if sensor not in self.connected_sensors:
             return np.NaN
         
-        
         try:
-            measurements = []
-            
             if isinstance(sensor.config, ProgesConfig):
                 # TODO: Replace '2' value with config variable
                 sensor.measure_for_count(NB_MEASUREMENTS_PER_SAMPLE * 2) # Two channels in Box used
-                progres_list = sensor.list_measurements()      
-                measurements_dict = extract_progres_sensor_measurement(progres_list)
+                sensor_measurements_list = sensor.list_measurements()  
             else:
-                sensor.measure_for_count(NB_MEASUREMENTS_PER_SAMPLE)
-                m = sensor.list_measurements()   
-                measurements.append(m[0].value)
+                sensor_measurements_list = [sensor._sample() for i in range(NB_MEASUREMENTS_PER_SAMPLE)]
             sensor.stop_measuring()
-            sample = np.mean(measurements)
             
             
         except Exception as e:
-            print(f"Error sampling from sensor {sensor.sensor_id}: {e}")
-            print("Trying to reconnect from sensor")
+            print(f"[ERROR] {sensor.sensor_id}: {e}")
+            print("Trying to reconnect to sensor")
             start_time = time.time()
             try:
                 sensor._connect()
@@ -118,29 +124,12 @@ class Logger:
             end_time = time.time()
             diff_time = end_time - start_time
             print(f"Reconnection attempt took {diff_time}")
-            sample = np.NaN
+            sensor_measurements_list = [sensor.sensor_id]
             
-            
-            
-        return sample
-
-    async def new_sensors_data_file(self):
-        while True:
-            if self.output_sensors_file != None:
-                shutil.copy(self.output_sensors_file, self.local_folder_path)
-            try:
-                print("Trying to upload data...")
-            except:
-                print("Could not upload files to Google Drive, no Internet Connection.")
-
-            current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            self.output_sensors_file = f"./csv/sensor_data_{current_datetime}.csv"
-            self.create_sensors_data_csv()
-            print(f" Creating new CSV Placeholder  at {current_datetime}")
-            await asyncio.sleep(self.sensors_csv_file_period)  # 3600 for one hour
+        return sensor_measurements_list
 
     async def log_sensors_data(self):
-        self.latest_sensor_data = {sensor: float for sensor in self.sensor_list}
+        self.latest_sensor_data = {} # {sensor: float for sensor in self.sensor_list}
         self.latest_sensor_data["time"] = None
         self.already_tried_reconnect = {sensor: 0 for sensor in self.sensor_list}
 
@@ -148,10 +137,20 @@ class Logger:
             # Wait for sampling of all sensors
             tasks = [self.sample_sensor(sensor) for sensor in self.sensor_list]
             results = await asyncio.gather(*tasks)
-
-            # Gather all results in a single dict {sensor: val}
-            for sensor, measurement in zip(self.sensor_list, results):
-                self.latest_sensor_data[sensor] = measurement
+            
+            # Preprocess 
+            for hat_measurement_list in results:
+                if isinstance(hat_measurement_list[0], str):
+                    self.latest_sensor_data[hat_measurement_list[0]] = np.NaN
+                
+                elif isinstance(hat_measurement_list[0], ProgesMeasurement):
+                    progres_sensor_dict = utils.extract_progres_sensor_measurement(hat_measurement_list)                    
+                    for sensor_id , measurement_tuple_list in progres_sensor_dict.items():
+                        id, averaged_measurement = utils.average_progres_sensor_measurement(sensor_id, measurement_tuple_list)
+                        self.latest_sensor_data[id] = averaged_measurement
+                else:
+                    averaged_measurement =  utils.average_sensor_measurement(hat_measurement_list)
+                    self.latest_sensor_data[hat_measurement_list[0].sensor_id] = averaged_measurement
 
             self.sensor_data["time"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             self.save_new_sensors_data()
@@ -162,23 +161,41 @@ class Logger:
         if self.output_sensors_file is not None:
             with open(self.output_sensors_file, "a", newline="") as csv_file:
                 csv_writer = csv.writer(csv_file)
-                row_data = [self.sensor_data["time"]] + [self.latest_sensor_data[sensor] for sensor in self.sensor_list]
+                row_data = [self.sensor_data["time"]] + [self.latest_sensor_data[id] for id in self.sensor_id_list]
                 csv_writer.writerow(row_data)
-                print("New measurements saved at " + self.sensor_data["time"])
+                
+    async def new_sensors_data_file(self):
+        while True:
+            if self.output_sensors_file != None:
+                shutil.copy(self.output_sensors_file, self.local_folder_path)
+            try:
+                print("Uploading CSV to Drive, new local file will be created.")
+            except:
+                print("Could not upload files to Google Drive, no Internet Connection.")
+            current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            self.output_sensors_file = f"./csv/sensor_data_{current_datetime}.csv"
+            self.create_sensors_data_csv()
+            await asyncio.sleep(self.sensors_csv_file_period)  # 3600 for one hour
 
     def create_sensors_data_csv(self):
+        print("------- Preparing CSV Filesave --------")
         with open(self.output_sensors_file, "w", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
             # Create a list of column headers based on sensor_id
             header = ["Timestamp"]
             for sensor in self.sensor_list: 
-                if not isinstance(sensor.config, ProgesConfig):
-                    header + [
+                if sensor.sensor_id != 'progres_box':
+                    header = header + [
                         f"{sensor.config.measurement_type} from {sensor.config.sensor_id}" 
                     ]
-                else: # Workaround to missing .config.measurement_type of progres
-                    header + [
-                        f"Alu-Profile Temperature measurement from {sensor.config.sensor_id}" 
+                else: 
+                    # TODO: Fix this hardcoded mess
+                    # Workaround to missing .config.measurement_type of progres_hat
+                    # Idx remains set after initialization of sensor_id_list
+                    header = header + [
+                        f"Alu Temperature: ID:DB00000E81526628" 
+                    ]
+                    header = header + [
+                        f"Alu Temperature: ID:9300000E80967E28" 
                     ]
             csv_writer.writerow(header)
-            # csv_file.close()

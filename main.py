@@ -29,8 +29,7 @@ if __name__ == "__main__":
     Log.establish_sensor_connection()
 
     print(" ---------- Single test measurement from each connected sensor: ---------- ")
-    Log.sample_sensors()
+    Log.single_sample_all_sensors()
 
     print("---------- Start Logging ----------")
-    
     asyncio.run(Log.run_logger())
