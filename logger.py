@@ -152,16 +152,16 @@ class Logger:
                     averaged_measurement =  utils.average_sensor_measurement(hat_measurement_list)
                     self.latest_sensor_data[hat_measurement_list[0].sensor_id] = averaged_measurement
 
-            self.sensor_data["time"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            self.latest_sensor_data["time"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             self.save_new_sensors_data()
-            print(self.latest_sensor_data)
+
             await asyncio.sleep(self.sensors_sampling_time)
 
     def save_new_sensors_data(self):
         if self.output_sensors_file is not None:
             with open(self.output_sensors_file, "a", newline="") as csv_file:
                 csv_writer = csv.writer(csv_file)
-                row_data = [self.sensor_data["time"]] + [self.latest_sensor_data[id] for id in self.sensor_id_list]
+                row_data = [self.latest_sensor_data["time"]] + [self.latest_sensor_data[id] for id in self.sensor_id_list]
                 csv_writer.writerow(row_data)
                 
     async def new_sensors_data_file(self):

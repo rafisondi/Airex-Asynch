@@ -35,6 +35,7 @@ def get_sensor_list(config_dict):
                 measurement_type=config.get("measurement_type"),
             )
         )
+        sensor_list.append(tmp)
         
     for config in config_dict.get("progres", []):
         tmp = ProgesSensorBox.create_from_config(
