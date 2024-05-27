@@ -24,6 +24,7 @@ dependencies = [
     "hat-lux1000",
     "hat-pre1000",
     "hat-hum1000",
+    "hat-proges",
 ]
 
 
