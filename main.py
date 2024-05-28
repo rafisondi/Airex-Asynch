@@ -1,7 +1,11 @@
 import asyncio
-
 import json
+import logging
 from logger import Logger , LoggerConfig
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def get_logger_config(config_file_path):
     with open(config_file_path) as config_file:

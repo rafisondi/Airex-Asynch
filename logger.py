@@ -140,9 +140,10 @@ class Logger:
             
             # Preprocess 
             for hat_measurement_list in results:
+                
                 if isinstance(hat_measurement_list[0], str):
                     self.latest_sensor_data[hat_measurement_list[0]] = np.NaN
-                
+                    
                 elif isinstance(hat_measurement_list[0], ProgesMeasurement):
                     progres_sensor_dict = utils.extract_progres_sensor_measurement(hat_measurement_list)                    
                     for sensor_id , measurement_tuple_list in progres_sensor_dict.items():
@@ -151,10 +152,9 @@ class Logger:
                 else:
                     averaged_measurement =  utils.average_sensor_measurement(hat_measurement_list)
                     self.latest_sensor_data[hat_measurement_list[0].sensor_id] = averaged_measurement
-
+                    
             self.latest_sensor_data["time"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             self.save_new_sensors_data()
-
             await asyncio.sleep(self.sensors_sampling_time)
 
     def save_new_sensors_data(self):
