@@ -6,9 +6,10 @@ import asyncio
 from dataclasses import dataclass
 import numpy as np
 import utils
+import logging
 
 from hat.sensor import SensorConfig, Measurement
-from hat_proges import ProgesConfig, ProgesMeasurement
+from hat_proges import ProgesConfig, ProgesMeasurement, ProgesSensorBox , https_client
 
 
 MAX_CONSECUTIVE_FAILURES = 3
@@ -50,24 +51,35 @@ class Logger:
         
 
     def establish_sensor_connection(self):
+        table_header = f"{'Sensor ID':<25} | {'Status':<15}"
+        print("\n Establish sensor connections...")
+        print(table_header)
+        print("-" * len(table_header))
+        
         count = 0
         idx = []
+        s = 1
         for sensor in self.sensor_list:
             try:
-                sensor._connect()
-                print( f" Sensor {sensor} connected" )
+                if isinstance(sensor, ProgesSensorBox):
+                    if(sensor._connect() == None):
+                        raise Exception("Could not connect to Progres Box") 
+                else:
+                    sensor._connect()
+                status = "Connected"
                 idx.append(count)
                      
             except Exception as e:
-                print(f"Could not connect to sensor {sensor.sensor_id}: {e}")
+                status = "Disconnected"
             count += 1
-        self.connected_sensors = [self.sensor_list[i] for i in idx]
-        print(len(self.connected_sensors), "/", len(self.sensor_list), " sensors successfully connected.")
-        if len(self.connected_sensors) < len(self.sensor_list):
-            print(" Not found sensors are going to return NaN from here on.")
             
+            print(f"{sensor.sensor_id:<25} | {status:<15}")
+        self.connected_sensors = [self.sensor_list[i] for i in idx]
         
-
+        print(f"{len(self.connected_sensors)} / {len(self.sensor_list)} sensors successfully connected.")
+        print("-" * len(table_header))
+            
+    
     def disconnect_sensor_connection(self):
         for sensor in self.sensor_list:
             try:
@@ -77,10 +89,11 @@ class Logger:
         print("Sensors disconnected ")
 
     def single_sample_all_sensors(self):
+        progres_flag = 0
         for sensor in self.connected_sensors:
             try:
-                
                 if (sensor.sensor_id == 'progres_box'):
+                    progres_flag = 1
                     sensor.measure_for_count(2) # 2 channels in Box used
                     # TODO Fix the following hack
                     # Include the progres sensor ID's attached to the box
@@ -89,11 +102,25 @@ class Logger:
                     progres_id_2 = sensor_measurements_list[1].sensor_id
                     progres_box_idx = self.sensor_id_list.index('progres_box')
                     self.sensor_id_list[progres_box_idx:progres_box_idx+1] = progres_id_1, progres_id_2
+                    measurement_1 = sensor_measurements_list[0]
+                    measurement_2 = sensor_measurements_list[0]
+                    print(f"{progres_id_1:<25} | Measurement: {measurement_1}")
+                    print(f"{progres_id_2:<25} | Measurement: {measurement_2}")
                 else:
-                    print(sensor._sample(), f" sampled from: {sensor.sensor_id}")
-
+                    measurement = sensor._sample()
+                    print(f"{sensor.sensor_id:<25} | Measurement: {measurement}")
             except Exception as e:
                 print(f"Error sampling from sensor {sensor.sensor_id}: {e}")
+        if progres_flag ==0:
+            # No Progres Box connected
+            dummy_sensor = ProgesSensorBox.create_from_config(
+                config=ProgesConfig( sensor_id="proges_box_tmp", frequency= 0, host="000.000.00.00"),
+            )
+            for idx, sensor in enumerate(self.sensor_list):
+                if sensor.sensor_id == "progres_box":
+                    self.sensor_list[idx:idx+1] = self.sensor_list[idx], dummy_sensor
+                    self.sensor_id_list.append("proges_box_tmp")
+                    break  
 
     async def run_logger(self):
         batch = asyncio.gather(self.new_sensors_data_file(), self.log_sensors_data())
@@ -101,8 +128,7 @@ class Logger:
 
     async def sample_sensor(self, sensor:SensorConfig) -> list[Measurement] :
         if sensor not in self.connected_sensors:
-            return np.NaN
-        
+            return sensor.sensor_id
         try:
             if isinstance(sensor.config, ProgesConfig):
                 # TODO: Replace '2' value with config variable
@@ -111,7 +137,6 @@ class Logger:
             else:
                 sensor_measurements_list = [sensor._sample() for i in range(NB_MEASUREMENTS_PER_SAMPLE)]
             sensor.stop_measuring()
-            
             
         except Exception as e:
             print(f"[ERROR] {sensor.sensor_id}: {e}")
@@ -141,8 +166,8 @@ class Logger:
             # Preprocess 
             for hat_measurement_list in results:
                 
-                if isinstance(hat_measurement_list[0], str):
-                    self.latest_sensor_data[hat_measurement_list[0]] = np.NaN
+                if isinstance(hat_measurement_list, str):
+                    self.latest_sensor_data[hat_measurement_list] = np.NaN
                     
                 elif isinstance(hat_measurement_list[0], ProgesMeasurement):
                     progres_sensor_dict = utils.extract_progres_sensor_measurement(hat_measurement_list)                    
@@ -184,11 +209,8 @@ class Logger:
             # Create a list of column headers based on sensor_id
             header = ["Timestamp"]
             for sensor in self.sensor_list: 
-                if sensor.sensor_id != 'progres_box':
-                    header = header + [
-                        f"{sensor.config.measurement_type} from {sensor.config.sensor_id}" 
-                    ]
-                else: 
+                
+                if sensor.sensor_id == 'progres_box': 
                     # TODO: Fix this hardcoded mess
                     # Workaround to missing .config.measurement_type of progres_hat
                     # Idx remains set after initialization of sensor_id_list
@@ -197,5 +219,10 @@ class Logger:
                     ]
                     header = header + [
                         f"Alu Temperature: ID:9300000E80967E28" 
+                    ]
+                    
+                elif sensor.sensor_id != 'proges_box_tmp' or sensor.sensor_id == 'progres_box':
+                    header = header + [
+                        f"{sensor.config.measurement_type} from {sensor.config.sensor_id}" 
                     ]
             csv_writer.writerow(header)

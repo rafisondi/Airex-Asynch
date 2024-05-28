@@ -1,10 +1,7 @@
 import asyncio
 import json
-import logging
+import logging 
 from logger import Logger , LoggerConfig
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def get_logger_config(config_file_path):
@@ -22,15 +19,16 @@ def get_logger_config(config_file_path):
     return logconfig
 
 if __name__ == "__main__":
+    
     config_file_path = "./logger_config.json"
     print("Loading logger config...")
     config = get_logger_config(config_file_path)
 
     Log = Logger(config)
-    print( "---------- Setting sensor list... ----------")
+    print("---------- Initializing Sensor List ----------")
     Log.set_sensor_list()
 
-    print("---------- Establish sensor connections... ----------")
+    
     Log.establish_sensor_connection()
 
     print(" ---------- Single test measurement from each connected sensor: ---------- ")
