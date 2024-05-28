@@ -6,10 +6,11 @@ import asyncio
 from dataclasses import dataclass
 import numpy as np
 import utils
-import logging
+import subprocess
+import platform
 
 from hat.sensor import SensorConfig, Measurement
-from hat_proges import ProgesConfig, ProgesMeasurement, ProgesSensorBox , https_client
+from hat_proges import ProgesConfig, ProgesMeasurement, ProgesSensorBox
 
 
 MAX_CONSECUTIVE_FAILURES = 3
@@ -26,6 +27,21 @@ class LoggerConfig:
     drive_folder_id: str
     upload_to_drive_period: float
 
+
+def check_connection(sensor : ProgesSensorBox) -> None:
+    """ Raises an Exception if cannot ping  Progres Box"""
+    host = ping_ok(sensor.config.host)
+    if not host:
+        raise Exception("Could not connect to host") 
+    
+def ping_ok(sHost : str) -> bool:
+    try:
+        # Ping address of the hose
+        param = "-n" if platform.system().lower() == "windows" else "-c"
+        subprocess.check_output(["ping", param, "1", sHost])
+        return True
+    except Exception:
+        return False
 
 class Logger:
     def __init__(self, config: LoggerConfig):
@@ -58,14 +74,14 @@ class Logger:
         
         count = 0
         idx = []
-        s = 1
+        s = 0
         for sensor in self.sensor_list:
             try:
                 if isinstance(sensor, ProgesSensorBox):
-                    if(sensor._connect() == None):
-                        raise Exception("Could not connect to Progres Box") 
+                    check_connection(sensor)
                 else:
                     sensor._connect()
+                    
                 status = "Connected"
                 idx.append(count)
                      
@@ -79,14 +95,6 @@ class Logger:
         print(f"{len(self.connected_sensors)} / {len(self.sensor_list)} sensors successfully connected.")
         print("-" * len(table_header))
             
-    
-    def disconnect_sensor_connection(self):
-        for sensor in self.sensor_list:
-            try:
-                sensor.disconnect()
-            except:
-                continue
-        print("Sensors disconnected ")
 
     def single_sample_all_sensors(self):
         progres_flag = 0
